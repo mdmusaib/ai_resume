@@ -1,9 +1,11 @@
+// src/aiOptimizer.js
 require('dotenv').config();
-const OpenAI = require('openai');
+const { HfInference } = require('@huggingface/inference');
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const hf = new HfInference(process.env.HF_API_KEY);
+
+// you can change this to any text-generation or chat model you like on HF Hub
+const MODEL_ID = 'meta-llama/Meta-Llama-3-8B-Instruct'; // example public instruct model
 
 async function optimizeResume(resumeText, jobDescription) {
   const prompt = `
@@ -13,23 +15,33 @@ Job Description:
 ${jobDescription.substring(0, 2000)}
 
 Resume:
-${resumeText.substring(0, 3000)}
+${resumeText.substring(0, 4000)}
 
-Optimized Resume:
+Optimized Resume (plain text resume, no explanations):
 `;
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',  // Use cheaper/faster model
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1000,
-      temperature: 0.7,
+    const result = await hf.textGeneration({
+      model: MODEL_ID,
+      inputs: prompt,
+      parameters: {
+        max_new_tokens: 800,
+        temperature: 0.7,
+      },
     });
 
-    return completion.choices[0].message.content.trim();
+    // HF textGeneration returns either a string or an array depending on model;
+    // normalize it to a plain string.
+    if (typeof result === 'string') {
+      return result.trim();
+    }
+    if (Array.isArray(result) && result[0]?.generated_text) {
+      return result[0].generated_text.trim();
+    }
+    return JSON.stringify(result);
   } catch (error) {
-    console.error('OpenAI API error:', error.message);
-    throw error;
+    console.error('Hugging Face API error:', error);
+    throw new Error('Hugging Face generation failed');
   }
 }
 
