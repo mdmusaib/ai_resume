@@ -4,47 +4,48 @@ const { HfInference } = require('@huggingface/inference');
 
 const hf = new HfInference(process.env.HF_API_KEY);
 
-// Use a well‑supported text‑generation model on the free Inference API
+// same model, but use conversational API
 const MODEL_ID = 'mistralai/Mistral-7B-Instruct-v0.2';
 
 async function optimizeResume(resumeText, jobDescription) {
-  const prompt = `
-You are a professional resume writer. Given the job description and a resume text, rewrite and optimize the resume to highlight relevant skills, keywords, and accomplishments that best match the job.
+  const systemPrompt = `
+You are a professional resume writer. Rewrite and optimize the user's resume to match the job description, 
+highlighting relevant skills, keywords, and accomplishments. 
+Return ONLY the improved resume text, no extra explanations.
+`;
 
+  const userPrompt = `
 Job Description:
 ${jobDescription.slice(0, 2000)}
 
 Resume:
 ${resumeText.slice(0, 4000)}
-
-Optimized Resume (only the improved resume, no explanations):
 `;
 
   try {
-    const result = await hf.textGeneration({
+    const result = await hf.chatCompletion({
       model: MODEL_ID,
-      inputs: prompt,
-      parameters: {
-        max_new_tokens: 800,
-        temperature: 0.7,
-      },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 800,
+      temperature: 0.7,
     });
 
-    console.log('HF raw result:', result); // debug
+    console.log('HF raw result:', result);
 
-    // textGeneration may return a string or array
-    if (typeof result === 'string') {
-      return result.trim();
-    }
-    if (Array.isArray(result) && result[0]?.generated_text) {
-      return result[0].generated_text.trim();
-    }
+    // chatCompletion returns an object with choices
+    const content =
+      result.choices?.[0]?.message?.content ||
+      JSON.stringify(result, null, 2);
 
-    // Fallback: return JSON string so you can see what came back
-    return JSON.stringify(result, null, 2);
+    return content.trim();
   } catch (error) {
     console.error('Hugging Face API error details:', error);
-    throw new Error('Hugging Face generation failed: ' + (error.message || 'unknown error'));
+    throw new Error(
+      'Hugging Face generation failed: ' + (error.message || 'unknown error')
+    );
   }
 }
 
